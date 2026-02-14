@@ -1,8 +1,7 @@
-
 #ifndef YOLO_FILTER_H
 #define YOLO_FILTER_H
 
-#include &lt;obs-module.h&gt;
+#include <obs-module.h>
 
 #ifdef __cplusplus
 extern "C" {

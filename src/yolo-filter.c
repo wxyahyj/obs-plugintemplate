@@ -1,6 +1,5 @@
-
-#include &lt;obs-module.h&gt;
-#include &lt;stdlib.h&gt;
+#include <obs-module.h>
+#include <stdlib.h>
 
 struct my_filter_data {
 	obs_source_t *source;
@@ -15,7 +14,7 @@ static const char *my_filter_name(void *unused)
 static void *my_filter_create(obs_data_t *settings, obs_source_t *source)
 {
 	struct my_filter_data *filter = (struct my_filter_data *)bzalloc(sizeof(struct my_filter_data));
-	filter-&gt;source = source;
+	filter->source = source;
 
 	blog(LOG_INFO, "[YOLO] 创建成功！");
 
@@ -54,8 +53,8 @@ static void my_filter_video_render(void *data, gs_effect_t *effect)
 {
 	struct my_filter_data *filter = (struct my_filter_data *)data;
 
-	if (obs_source_process_filter_begin(filter-&gt;source, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING)) {
-		obs_source_process_filter_end(filter-&gt;source, effect, 0, 0);
+	if (obs_source_process_filter_begin(filter->source, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING)) {
+		obs_source_process_filter_end(filter->source, effect, 0, 0);
 	}
 }
 

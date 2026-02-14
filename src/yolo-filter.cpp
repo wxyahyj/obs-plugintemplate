@@ -10,10 +10,6 @@
 #include <mutex>
 #include <memory>
 
-#ifdef _WIN32
-#include <onnxruntime_providers_cuda.h>
-#endif
-
 struct Detection {
 	float x, y, w, h;
 	float confidence;
@@ -30,7 +26,6 @@ struct YoloFilterData {
 
 	bool model_loaded;
 	std::string model_path;
-	bool use_cuda;
 
 	bool inference_enabled;
 	float confidence_threshold;
@@ -77,7 +72,6 @@ static void *yolo_filter_create(obs_data_t *settings, obs_source_t *source)
 	filter->render_boxes = true;
 	filter->follow_mode = false;
 	filter->model_input_size = 640;
-	filter->use_cuda = true;
 	filter->effect = nullptr;
 
 	try {
@@ -129,19 +123,6 @@ static bool load_model(YoloFilterData *filter, const std::string &path)
 			GraphOptimizationLevel::ORT_ENABLE_EXTENDED);
 
 #ifdef _WIN32
-		if (filter->use_cuda) {
-			try {
-				OrtCUDAProviderOptions cuda_options;
-				cuda_options.device_id = 0;
-				session_options.AppendExecutionProvider_CUDA(cuda_options);
-				obs_log(LOG_INFO, "[YOLO] CUDA execution provider enabled");
-			} catch (const std::exception &e) {
-				obs_log(LOG_WARNING, "[YOLO] Failed to enable CUDA: %s, falling back to CPU", e.what());
-			}
-		}
-#endif
-
-#ifdef _WIN32
 		std::wstring wpath(path.begin(), path.end());
 		filter->ort_session = std::make_unique<Ort::Session>(
 			*filter->ort_env, wpath.c_str(), session_options);
@@ -179,7 +160,6 @@ static void yolo_filter_update(void *data, obs_data_t *settings)
 	filter->render_boxes = obs_data_get_bool(settings, "render_boxes");
 	filter->follow_mode = obs_data_get_bool(settings, "follow_mode");
 	filter->model_input_size = (int)obs_data_get_int(settings, "model_input_size");
-	filter->use_cuda = obs_data_get_bool(settings, "use_cuda");
 }
 
 static void preprocess_image(const uint8_t *bgra_data, int width, int height,
@@ -530,7 +510,6 @@ static obs_properties_t *yolo_filter_properties(void *data)
 	obs_properties_add_path(props, "model_path", obs_module_text("ModelPath"),
 				OBS_PATH_FILE, "ONNX Files (*.onnx)", nullptr);
 
-	obs_properties_add_bool(props, "use_cuda", obs_module_text("UseCUDA"));
 	obs_properties_add_bool(props, "inference_enabled", obs_module_text("EnableInference"));
 
 	obs_properties_add_float_slider(props, "confidence_threshold",
@@ -565,7 +544,6 @@ static obs_properties_t *yolo_filter_properties(void *data)
 static void yolo_filter_defaults(obs_data_t *settings)
 {
 	obs_data_set_default_string(settings, "model_path", "");
-	obs_data_set_default_bool(settings, "use_cuda", true);
 	obs_data_set_default_bool(settings, "inference_enabled", false);
 	obs_data_set_default_double(settings, "confidence_threshold", 0.5);
 	obs_data_set_default_int(settings, "inference_interval", 5);

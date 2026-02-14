@@ -1,104 +1,120 @@
 #include <obs-module.h>
+#include <graphics/graphics.h>
 #include <stdlib.h>
 
-struct my_filter_data {
-	obs_source_t *source;
+struct yolo_filter_data {
+	obs_source_t *context;
+	int render_count;
 };
 
-static const char *my_filter_name(void *unused)
+static const char *yolo_filter_get_name(void *unused)
 {
 	UNUSED_PARAMETER(unused);
-	return "YOLO 识别";
+	return "YOLO 识别 (调试版)";
 }
 
-static void *my_filter_create(obs_data_t *settings, obs_source_t *source)
+static void *yolo_filter_create(obs_data_t *settings, obs_source_t *context)
 {
-	blog(LOG_INFO, "[YOLO] ********** my_filter_create 开始！**********");
+	struct yolo_filter_data *filter = bzalloc(sizeof(struct yolo_filter_data));
+	filter->context = context;
+	filter->render_count = 0;
 	
-	struct my_filter_data *filter = (struct my_filter_data *)bzalloc(sizeof(struct my_filter_data));
-	filter->source = source;
-
-	blog(LOG_INFO, "[YOLO] 创建成功！source = %p", source);
-
-	obs_source_update(source, settings);
+	UNUSED_PARAMETER(settings);
 	
-	blog(LOG_INFO, "[YOLO] ********** my_filter_create 结束！**********");
+	blog(LOG_INFO, "[YOLO Filter DEBUG] ===== CREATE CALLED =====");
+	blog(LOG_INFO, "[YOLO Filter DEBUG] Context: %p", context);
+	
 	return filter;
 }
 
-static void my_filter_destroy(void *data)
+static void yolo_filter_destroy(void *data)
 {
-	blog(LOG_INFO, "[YOLO] my_filter_destroy 被调用！");
-	struct my_filter_data *filter = (struct my_filter_data *)data;
-	if (filter)
-		bfree(filter);
-}
-
-static void my_filter_defaults(obs_data_t *settings)
-{
-	UNUSED_PARAMETER(settings);
-}
-
-static obs_properties_t *my_filter_properties(void *data)
-{
-	UNUSED_PARAMETER(data);
-
-	obs_properties_t *props = obs_properties_create();
-	obs_properties_add_text(props, "info", "CSDN文章完整伪代码版本", OBS_TEXT_INFO);
-	return props;
-}
-
-static void my_filter_update(void *data, obs_data_t *settings)
-{
-	UNUSED_PARAMETER(data);
-	UNUSED_PARAMETER(settings);
-}
-
-static void my_filter_video_render(void *data, gs_effect_t *effect)
-{
-	struct my_filter_data *filter = (struct my_filter_data *)data;
+	struct yolo_filter_data *filter = data;
 	
-	blog(LOG_INFO, "[YOLO] video_render 开始！effect = %p", effect);
+	blog(LOG_INFO, "[YOLO Filter DEBUG] ===== DESTROY CALLED =====");
+	blog(LOG_INFO, "[YOLO Filter DEBUG] Total renders: %d", filter->render_count);
 	
-	obs_source_t *target = obs_filter_get_target(filter->source);
-	uint32_t width = 0;
-	uint32_t height = 0;
+	bfree(filter);
+}
+
+static void yolo_filter_video_render(void *data, gs_effect_t *effect)
+{
+	struct yolo_filter_data *filter = data;
+	filter->render_count++;
 	
-	if (target) {
-		width = obs_source_get_width(target);
-		height = obs_source_get_height(target);
-		blog(LOG_INFO, "[YOLO] target = %p, width = %u, height = %u", target, width, height);
-	} else {
-		blog(LOG_WARNING, "[YOLO] target is NULL!");
+	// 只在前10帧打印日志，避免刷屏
+	if (filter->render_count <= 10) {
+		blog(LOG_INFO, "[YOLO Filter DEBUG] ===== RENDER #%d =====", filter->render_count);
+		blog(LOG_INFO, "[YOLO Filter DEBUG] Effect param: %p", effect);
 	}
 	
-	if (!obs_source_process_filter_begin(filter->source, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING)) {
-		blog(LOG_WARNING, "[YOLO] obs_source_process_filter_begin 失败！");
+	// 检查能否开始处理
+	bool begin_result = obs_source_process_filter_begin(filter->context, 
+	                                                     GS_RGBA,
+	                                                     OBS_NO_DIRECT_RENDERING);
+	
+	if (filter->render_count <= 10) {
+		blog(LOG_INFO, "[YOLO Filter DEBUG] Begin result: %s", begin_result ? "SUCCESS" : "FAILED");
+	}
+	
+	if (!begin_result) {
+		if (filter->render_count <= 10) {
+			blog(LOG_ERROR, "[YOLO Filter DEBUG] Begin failed! Returning early.");
+		}
 		return;
 	}
 	
-	blog(LOG_INFO, "[YOLO] begin 成功！调用 end, width=%u, height=%u...", width, height);
+	// 获取默认effect
+	gs_effect_t *default_effect = obs_get_base_effect(OBS_EFFECT_DEFAULT);
 	
-	if (width == 0 || height == 0) {
-		blog(LOG_WARNING, "[YOLO] width 或 height 是 0！使用默认值 1920x1080");
-		width = 1920;
-		height = 1080;
+	if (filter->render_count <= 10) {
+		blog(LOG_INFO, "[YOLO Filter DEBUG] Default effect: %p", default_effect);
 	}
 	
-	obs_source_process_filter_end(filter->source, effect, width, height);
+	// 结束处理
+	obs_source_process_filter_end(filter->context, default_effect, 0, 0);
 	
-	blog(LOG_INFO, "[YOLO] video_render 结束！");
+	if (filter->render_count <= 10) {
+		blog(LOG_INFO, "[YOLO Filter DEBUG] End called successfully");
+	}
+}
+
+static void yolo_filter_defaults(obs_data_t *settings)
+{
+	UNUSED_PARAMETER(settings);
+	blog(LOG_INFO, "[YOLO Filter DEBUG] ===== DEFAULTS CALLED =====");
+}
+
+static obs_properties_t *yolo_filter_properties(void *data)
+{
+	UNUSED_PARAMETER(data);
+	
+	blog(LOG_INFO, "[YOLO Filter DEBUG] ===== PROPERTIES CALLED =====");
+	
+	obs_properties_t *props = obs_properties_create();
+	obs_properties_add_text(props, "info", 
+	                       "YOLO识别滤镜 - 调试版本 (查看OBS日志)", 
+	                       OBS_TEXT_INFO);
+	
+	return props;
+}
+
+static void yolo_filter_update(void *data, obs_data_t *settings)
+{
+	UNUSED_PARAMETER(data);
+	UNUSED_PARAMETER(settings);
+	blog(LOG_INFO, "[YOLO Filter DEBUG] ===== UPDATE CALLED =====");
 }
 
 struct obs_source_info yolo_filter_info = {
-	.id             = "yolo_recognizer_filter",
-	.type           = OBS_SOURCE_TYPE_FILTER,
-	.output_flags   = OBS_SOURCE_VIDEO,
-	.get_name       = my_filter_name,
-	.create         = my_filter_create,
-	.destroy        = my_filter_destroy,
-	.get_defaults   = my_filter_defaults,
-	.get_properties = my_filter_properties,
-	.update         = my_filter_update,
-	.video_render   = my_filter_video_render,
+	.id = "yolo_recognizer_filter_debug",
+	.type = OBS_SOURCE_TYPE_FILTER,
+	.output_flags = OBS_SOURCE_VIDEO,
+	.get_name = yolo_filter_get_name,
+	.create = yolo_filter_create,
+	.destroy = yolo_filter_destroy,
+	.video_render = yolo_filter_video_render,
+	.get_defaults = yolo_filter_defaults,
+	.get_properties = yolo_filter_properties,
+	.update = yolo_filter_update,
 };

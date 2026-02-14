@@ -71,10 +71,17 @@ static void *yolo_filter_create(obs_data_t *settings, obs_source_t *source)
 
 	try {
 		filter->ort_env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "YoloFilter");
-		filter->memory_info = std::make_unique<Ort::MemoryInfo>(
-			Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault));
+		Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+		filter->memory_info = std::make_unique<Ort::MemoryInfo>(std::move(mem_info));
+		blog(LOG_INFO, "[YOLO] ONNX Runtime initialized successfully");
 	} catch (const std::exception &e) {
 		blog(LOG_ERROR, "[YOLO] Failed to initialize ONNX Runtime: %s", e.what());
+		filter->ort_env.reset();
+		filter->memory_info.reset();
+	} catch (...) {
+		blog(LOG_ERROR, "[YOLO] Unknown error initializing ONNX Runtime");
+		filter->ort_env.reset();
+		filter->memory_info.reset();
 	}
 
 	obs_source_update(source, settings);
@@ -84,19 +91,31 @@ static void *yolo_filter_create(obs_data_t *settings, obs_source_t *source)
 
 static void yolo_filter_destroy(void *data)
 {
+	if (!data)
+		return;
+
 	YoloFilterData *filter = static_cast<YoloFilterData *>(data);
 
-	std::lock_guard<std::mutex> lock(filter->inference_mutex);
+	try {
+		std::lock_guard<std::mutex> lock(filter->inference_mutex);
 
-	filter->ort_session.reset();
-	filter->memory_info.reset();
-	filter->ort_env.reset();
+		filter->ort_session.reset();
+		filter->memory_info.reset();
+		filter->ort_env.reset();
+	} catch (...) {
+		blog(LOG_ERROR, "[YOLO] Error during cleanup");
+	}
 
 	delete filter;
 }
 
 static bool load_model(YoloFilterData *filter, const std::string &path)
 {
+	if (!filter || !filter->ort_env) {
+		blog(LOG_ERROR, "[YOLO] Filter or ONNX Runtime not initialized");
+		return false;
+	}
+
 	std::lock_guard<std::mutex> lock(filter->inference_mutex);
 
 	filter->ort_session.reset();
@@ -128,6 +147,12 @@ static bool load_model(YoloFilterData *filter, const std::string &path)
 	} catch (const std::exception &e) {
 		blog(LOG_ERROR, "[YOLO] Failed to load model: %s", e.what());
 		filter->model_loaded = false;
+		filter->ort_session.reset();
+		return false;
+	} catch (...) {
+		blog(LOG_ERROR, "[YOLO] Unknown error loading model");
+		filter->model_loaded = false;
+		filter->ort_session.reset();
 		return false;
 	}
 }
@@ -305,11 +330,24 @@ static void postprocess_yolov8(const float *output_data, int batch_size, int num
 
 static void run_inference(YoloFilterData *filter, const uint8_t *data, int width, int height)
 {
-	if (!filter->model_loaded || !filter->ort_session)
+	if (!filter || !filter->model_loaded || !filter->ort_session || !filter->ort_env || !filter->memory_info)
+		return;
+
+	if (width <= 0 || height <= 0 || !data)
 		return;
 
 	std::vector<float> input_tensor;
-	preprocess_image(data, width, height, filter->model_input_size, input_tensor);
+	try {
+		preprocess_image(data, width, height, filter->model_input_size, input_tensor);
+	} catch (...) {
+		blog(LOG_ERROR, "[YOLO] Preprocessing failed");
+		return;
+	}
+
+	if (input_tensor.empty()) {
+		blog(LOG_ERROR, "[YOLO] Input tensor is empty");
+		return;
+	}
 
 	std::vector<int64_t> input_shape = {1, 3, (int64_t)filter->model_input_size,
 					      (int64_t)filter->model_input_size};
@@ -323,6 +361,11 @@ static void run_inference(YoloFilterData *filter, const uint8_t *data, int width
 		auto input_name = filter->ort_session->GetInputNameAllocated(0, allocator);
 		auto output_name = filter->ort_session->GetOutputNameAllocated(0, allocator);
 
+		if (!input_name || !output_name) {
+			blog(LOG_ERROR, "[YOLO] Failed to get input/output names");
+			return;
+		}
+
 		const char *input_names[] = {input_name.get()};
 		const char *output_names[] = {output_name.get()};
 
@@ -330,10 +373,20 @@ static void run_inference(YoloFilterData *filter, const uint8_t *data, int width
 			Ort::RunOptions{nullptr}, input_names, &input_tensor_ort, 1,
 			output_names, 1);
 
+		if (output_tensors.empty()) {
+			blog(LOG_ERROR, "[YOLO] No output tensors");
+			return;
+		}
+
 		auto &output_tensor = output_tensors[0];
 		auto output_info = output_tensor.GetTensorTypeAndShapeInfo();
 		auto output_shape = output_info.GetShape();
 		float *output_data = output_tensor.GetTensorMutableData<float>();
+
+		if (!output_data) {
+			blog(LOG_ERROR, "[YOLO] Output data is null");
+			return;
+		}
 
 		int num_detections = 0;
 		int num_classes = num_coco_classes;
@@ -346,6 +399,11 @@ static void run_inference(YoloFilterData *filter, const uint8_t *data, int width
 			num_classes = (int)output_shape[1] - 5;
 		}
 
+		if (num_detections <= 0 || num_classes <= 0) {
+			blog(LOG_ERROR, "[YOLO] Invalid output shape");
+			return;
+		}
+
 		std::vector<Detection> detections;
 		postprocess_yolov8(output_data, 1, num_classes, num_detections,
 				    filter->model_input_size, width, height,
@@ -355,6 +413,8 @@ static void run_inference(YoloFilterData *filter, const uint8_t *data, int width
 		filter->detections = std::move(detections);
 	} catch (const std::exception &e) {
 		blog(LOG_ERROR, "[YOLO] Inference failed: %s", e.what());
+	} catch (...) {
+		blog(LOG_ERROR, "[YOLO] Unknown inference error");
 	}
 }
 
@@ -368,10 +428,13 @@ static void yolo_filter_video_render(void *data, gs_effect_t *effect)
 
 static void yolo_filter_video_tick(void *data, float seconds)
 {
+	if (!data)
+		return;
+
 	YoloFilterData *filter = static_cast<YoloFilterData *>(data);
 	(void)seconds;
 
-	if (!filter->inference_enabled)
+	if (!filter->context || !filter->inference_enabled)
 		return;
 
 	filter->frame_counter++;
@@ -393,7 +456,9 @@ static void yolo_filter_video_tick(void *data, float seconds)
 	int width = (int)frame->width;
 	int height = (int)frame->height;
 
-	run_inference(filter, data_ptr, width, height);
+	if (width > 0 && height > 0 && data_ptr) {
+		run_inference(filter, data_ptr, width, height);
+	}
 
 	obs_source_release_frame(filter->context, frame);
 }

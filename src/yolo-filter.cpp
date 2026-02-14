@@ -1,11 +1,8 @@
 #include <obs-module.h>
-#include <graphics/graphics.h>
-#include <graphics/texrender.h>
 #include <string>
 
 struct my_filter_data {
 	obs_source_t *source;
-	gs_texrender_t *texrender;
 
 	std::string modelPath;
 	bool enableInference;
@@ -30,11 +27,7 @@ static void *my_filter_create(obs_data_t *settings, obs_source_t *source)
 	struct my_filter_data *filter = new (mem) my_filter_data();
 	filter->source = source;
 
-	obs_enter_graphics();
-	filter->texrender = gs_texrender_create(GS_BGRA, GS_ZS_NONE);
-	obs_leave_graphics();
-
-	blog(LOG_INFO, "[YOLO] 创建成功！source = %p, texrender = %p", source, filter->texrender);
+	blog(LOG_INFO, "[YOLO] 创建成功！source = %p", source);
 
 	obs_source_update(source, settings);
 	
@@ -47,11 +40,6 @@ static void my_filter_destroy(void *data)
 	blog(LOG_INFO, "[YOLO] my_filter_destroy 被调用！");
 	struct my_filter_data *filter = (struct my_filter_data *)data;
 	if (filter) {
-		if (filter->texrender) {
-			obs_enter_graphics();
-			gs_texrender_destroy(filter->texrender);
-			obs_leave_graphics();
-		}
 		filter->~my_filter_data();
 		bfree(filter);
 	}

@@ -36,7 +36,12 @@ static void my_filter_destroy(void *data)
 
 static void my_filter_defaults(obs_data_t *settings)
 {
-	UNUSED_PARAMETER(settings);
+	obs_data_set_default_bool(settings, "enable_inference", false);
+	obs_data_set_default_double(settings, "confidence_threshold", 0.5);
+	obs_data_set_default_int(settings, "inference_interval", 1);
+	obs_data_set_default_int(settings, "model_input_size", 640);
+	obs_data_set_default_bool(settings, "render_boxes", true);
+	obs_data_set_default_bool(settings, "follow_mode", false);
 }
 
 static obs_properties_t *my_filter_properties(void *data)
@@ -44,7 +49,16 @@ static obs_properties_t *my_filter_properties(void *data)
 	UNUSED_PARAMETER(data);
 
 	obs_properties_t *props = obs_properties_create();
-	obs_properties_add_text(props, "info", "直接透传版本", OBS_TEXT_INFO);
+	
+	obs_properties_add_path(props, "model_path", "模型路径", OBS_PATH_FILE, "ONNX 文件 (*.onnx);;所有文件 (*.*)", NULL);
+	obs_properties_add_bool(props, "enable_inference", "启用推理");
+	obs_properties_add_float_slider(props, "confidence_threshold", "置信度阈值", 0.0, 1.0, 0.01);
+	obs_properties_add_int_slider(props, "inference_interval", "推理间隔（帧）", 1, 30, 1);
+	obs_properties_add_int_slider(props, "model_input_size", "模型输入尺寸", 320, 1280, 32);
+	obs_properties_add_bool(props, "render_boxes", "渲染检测框");
+	obs_properties_add_bool(props, "follow_mode", "跟随模式");
+	obs_properties_add_text(props, "info", "YOLO 识别插件 - 开发中", OBS_TEXT_INFO);
+	
 	return props;
 }
 
@@ -52,34 +66,14 @@ static void my_filter_update(void *data, obs_data_t *settings)
 {
 	UNUSED_PARAMETER(data);
 	UNUSED_PARAMETER(settings);
+	blog(LOG_INFO, "[YOLO] my_filter_update 被调用！");
 }
 
 static void my_filter_video_render(void *data, gs_effect_t *effect)
 {
 	struct my_filter_data *filter = (struct my_filter_data *)data;
 	
-	blog(LOG_INFO, "[YOLO] video_render 被调用！开始渲染！");
-	
-	obs_source_t *target = obs_filter_get_target(filter->source);
-	uint32_t width = 0;
-	uint32_t height = 0;
-
-	if (target) {
-		width = obs_source_get_base_width(target);
-		height = obs_source_get_base_height(target);
-		blog(LOG_INFO, "[YOLO] 目标源：%p, 宽=%u, 高=%u", target, width, height);
-	}
-
-	if (width == 0 || height == 0) {
-		blog(LOG_INFO, "[YOLO] 宽或高为0，直接透传！");
-		obs_source_skip_video_filter(filter->source);
-		return;
-	}
-
-	if (obs_source_process_filter_begin(filter->source, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING)) {
-		blog(LOG_INFO, "[YOLO] 调用 obs_source_process_filter_end，宽=%u, 高=%u", width, height);
-		obs_source_process_filter_end(filter->source, effect, width, height);
-	}
+	obs_source_skip_video_filter(filter->source);
 }
 
 struct obs_source_info yolo_filter_info = {

@@ -33,13 +33,13 @@
     },
     "platformConfig": {
         "macos": {
-            "bundleId": "com.example.plugintemplate-for-obs"
+            "bundleId": "com.yolo.recognizer"
         }
     },
-    "name": "plugintemplate-for-obs",
-    "displayName": "Plugin Template for OBS",
+    "name": "yolo-recognizer",
+    "displayName": "YOLO Recognizer",
     "version": "1.0.0",
-    "author": "Your Name Here",
-    "website": "https://example.com",
-    "email": "me@example.com"
+    "author": "OBS Plugin Developer",
+    "website": "https://github.com/obsproject/obs-plugintemplate",
+    "email": "developer@example.com"
 }

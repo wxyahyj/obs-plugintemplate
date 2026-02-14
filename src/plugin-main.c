@@ -1,6 +1,6 @@
 /*
-Plugin Name
-Copyright (C) <Year> <Developer> <Email Address>
+YOLO Recognizer
+Copyright (C) 2025 OBS Plugin Developer
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -18,24 +18,20 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <obs-module.h>
 #include <plugin-support.h>
-
-// 声明滤镜注册函数
-void register_ai_mouse_follower_filter(void);
+#include "yolo-filter.h"
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
 
 bool obs_module_load(void)
 {
-	obs_log(LOG_INFO, "plugin loaded successfully (version %s)", PLUGIN_VERSION);
-	
-	// 注册 AI Mouse Follower 滤镜
-	register_ai_mouse_follower_filter();
-	
+	obs_log(LOG_INFO, "YOLO Recognizer plugin loaded successfully (version %s)",
+		PLUGIN_VERSION);
+	obs_register_source(&yolo_filter_info);
 	return true;
 }
 
 void obs_module_unload(void)
 {
-	obs_log(LOG_INFO, "plugin unloaded");
+	obs_log(LOG_INFO, "YOLO Recognizer plugin unloaded");
 }

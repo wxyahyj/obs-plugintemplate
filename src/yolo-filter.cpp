@@ -457,6 +457,7 @@ static const char *yolo_filter_name(void *unused)
 	return obs_module_text("YoloRecognizer");
 }
 
+extern "C" {
 struct obs_source_info yolo_filter_info = {
 	.id = "yolo_recognizer_filter",
 	.type = OBS_SOURCE_TYPE_FILTER,
@@ -471,3 +472,4 @@ struct obs_source_info yolo_filter_info = {
 	.video_render = yolo_filter_video_render,
 	.icon_type = OBS_ICON_TYPE_UNKNOWN
 };
+}

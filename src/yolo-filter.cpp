@@ -1,8 +1,11 @@
 #include <obs-module.h>
+#include <graphics/graphics.h>
+#include <graphics/texrender.h>
 #include <string>
 
 struct my_filter_data {
 	obs_source_t *source;
+	gs_texrender_t *texrender;
 
 	std::string modelPath;
 	bool enableInference;
@@ -26,8 +29,13 @@ static void *my_filter_create(obs_data_t *settings, obs_source_t *source)
 	void *mem = bmalloc(sizeof(struct my_filter_data));
 	struct my_filter_data *filter = new (mem) my_filter_data();
 	filter->source = source;
+	filter->texrender = nullptr;
 
-	blog(LOG_INFO, "[YOLO] 创建成功！source = %p", source);
+	obs_enter_graphics();
+	filter->texrender = gs_texrender_create(GS_BGRA, GS_ZS_NONE);
+	obs_leave_graphics();
+
+	blog(LOG_INFO, "[YOLO] 创建成功！source = %p, texrender = %p", source, filter->texrender);
 
 	obs_source_update(source, settings);
 	
@@ -40,6 +48,11 @@ static void my_filter_destroy(void *data)
 	blog(LOG_INFO, "[YOLO] my_filter_destroy 被调用！");
 	struct my_filter_data *filter = (struct my_filter_data *)data;
 	if (filter) {
+		if (filter->texrender) {
+			obs_enter_graphics();
+			gs_texrender_destroy(filter->texrender);
+			obs_leave_graphics();
+		}
 		filter->~my_filter_data();
 		bfree(filter);
 	}
@@ -103,7 +116,21 @@ static void my_filter_video_tick(void *data, float seconds)
 static void my_filter_video_render(void *data, gs_effect_t *effect)
 {
 	struct my_filter_data *filter = (struct my_filter_data *)data;
-	
+	obs_source_t *target = obs_filter_get_target(filter->source);
+	uint32_t width = obs_source_get_base_width(target);
+	uint32_t height = obs_source_get_base_height(target);
+
+	if (width > 0 && height > 0 && filter->texrender) {
+		obs_enter_graphics();
+		if (gs_texrender_begin(filter->texrender, width, height)) {
+			gs_ortho(0.0f, (float)width, 0.0f, (float)height, -100.0f, 100.0f);
+			gs_clear(GS_CLEAR_COLOR, 0, 0.0f, 0);
+			obs_source_video_render(target);
+			gs_texrender_end(filter->texrender);
+		}
+		obs_leave_graphics();
+	}
+
 	obs_source_skip_video_filter(filter->source);
 }
 

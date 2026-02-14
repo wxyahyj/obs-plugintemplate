@@ -1,7 +1,5 @@
 #include <obs-module.h>
-#include <graphics/graphics.h>
-#include <graphics/vec4.h>
-#include <util/dstr.h>
+#include <util/base.h>
 #include <onnxruntime_cxx_api.h>
 #include <vector>
 #include <string>
@@ -37,8 +35,6 @@ struct YoloFilterData {
 	int model_input_size;
 
 	std::vector<Detection> detections;
-
-	gs_effect_t *effect;
 };
 
 static const char *coco_classes[] = {
@@ -72,14 +68,13 @@ static void *yolo_filter_create(obs_data_t *settings, obs_source_t *source)
 	filter->render_boxes = true;
 	filter->follow_mode = false;
 	filter->model_input_size = 640;
-	filter->effect = nullptr;
 
 	try {
 		filter->ort_env = std::make_unique<Ort::Env>(ORT_LOGGING_LEVEL_WARNING, "YoloFilter");
 		filter->memory_info = std::make_unique<Ort::MemoryInfo>(
 			Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault));
 	} catch (const std::exception &e) {
-		obs_log(LOG_ERROR, "[YOLO] Failed to initialize ONNX Runtime: %s", e.what());
+		blog(LOG_ERROR, "[YOLO] Failed to initialize ONNX Runtime: %s", e.what());
 	}
 
 	obs_source_update(source, settings);
@@ -96,11 +91,6 @@ static void yolo_filter_destroy(void *data)
 	filter->ort_session.reset();
 	filter->memory_info.reset();
 	filter->ort_env.reset();
-
-	if (filter->effect) {
-		gs_effect_destroy(filter->effect);
-		filter->effect = nullptr;
-	}
 
 	delete filter;
 }
@@ -133,10 +123,10 @@ static bool load_model(YoloFilterData *filter, const std::string &path)
 
 		filter->model_path = path;
 		filter->model_loaded = true;
-		obs_log(LOG_INFO, "[YOLO] Model loaded successfully: %s", path.c_str());
+		blog(LOG_INFO, "[YOLO] Model loaded successfully: %s", path.c_str());
 		return true;
 	} catch (const std::exception &e) {
-		obs_log(LOG_ERROR, "[YOLO] Failed to load model: %s", e.what());
+		blog(LOG_ERROR, "[YOLO] Failed to load model: %s", e.what());
 		filter->model_loaded = false;
 		return false;
 	}
@@ -364,41 +354,8 @@ static void run_inference(YoloFilterData *filter, const uint8_t *data, int width
 		std::lock_guard<std::mutex> lock(filter->inference_mutex);
 		filter->detections = std::move(detections);
 	} catch (const std::exception &e) {
-		obs_log(LOG_ERROR, "[YOLO] Inference failed: %s", e.what());
+		blog(LOG_ERROR, "[YOLO] Inference failed: %s", e.what());
 	}
-}
-
-static gs_effect_t *create_solid_effect(void)
-{
-	const char *effect_code = "uniform float4x4 ViewProj;\n"
-				   "uniform float4 color;\n"
-				   "struct VSInput {\n"
-				   "   float3 pos : POSITION;\n"
-				   "};\n"
-				   "struct PSInput {\n"
-				   "   float4 pos : SV_POSITION;\n"
-				   "};\n"
-				   "PSInput VS(VSInput v_in)\n"
-				   "{\n"
-				   "   PSInput v_out;\n"
-				   "   v_out.pos = mul(float4(v_in.pos, 1.0), ViewProj);\n"
-				   "   return v_out;\n"
-				   "}\n"
-				   "float4 PS(PSInput p_in) : SV_Target\n"
-				   "{\n"
-				   "   return color;\n"
-				   "}\n"
-				   "technique Draw\n"
-				   "{\n"
-				   "   pass\n"
-				   "   {\n"
-				   "      VertexShader = compile vs_4_0_level_9_1 VS();\n"
-				   "      PixelShader  = compile ps_4_0_level_9_1 PS();\n"
-				   "   }\n"
-				   "}\n";
-
-	gs_effect_t *effect = gs_effect_create(effect_code, nullptr, nullptr);
-	return effect;
 }
 
 static void yolo_filter_video_render(void *data, gs_effect_t *effect)
@@ -407,65 +364,6 @@ static void yolo_filter_video_render(void *data, gs_effect_t *effect)
 
 	obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING);
 	obs_source_process_filter_end(filter->context, effect, 0, 0);
-
-	if (!filter->render_boxes || filter->detections.empty())
-		return;
-
-	if (!filter->effect) {
-		filter->effect = create_solid_effect();
-	}
-
-	if (!filter->effect)
-		return;
-
-	gs_blend_state_push();
-	gs_blend_function(GS_BLEND_SRCALPHA, GS_BLEND_INVSRCALPHA);
-
-	gs_effect_t *solid_effect = filter->effect;
-
-	gs_technique_t *tech = gs_effect_get_technique(solid_effect, "Draw");
-	gs_technique_begin(tech);
-
-	gs_effect_set_matrix4(gs_effect_get_param_by_name(solid_effect, "ViewProj"),
-			       gs_get_projection());
-
-	std::lock_guard<std::mutex> lock(filter->inference_mutex);
-
-	for (const auto &det : filter->detections) {
-		float colors[4][4] = {
-			{1.0f, 0.0f, 0.0f, 0.8f}, {0.0f, 1.0f, 0.0f, 0.8f},
-			{0.0f, 0.0f, 1.0f, 0.8f}, {1.0f, 1.0f, 0.0f, 0.8f}};
-
-		vec4 color;
-		vec4_set(&color, colors[det.class_id % 4][0], colors[det.class_id % 4][1],
-			colors[det.class_id % 4][2], colors[det.class_id % 4][3]);
-		gs_effect_set_vec4(gs_effect_get_param_by_name(solid_effect, "color"), &color);
-
-		float x1 = det.x;
-		float y1 = det.y;
-		float x2 = det.x + det.w;
-		float y2 = det.y + det.h;
-
-		gs_render_start(true);
-		gs_vertex2f(x1, y1);
-		gs_vertex2f(x2, y1);
-		gs_vertex2f(x2, y2);
-		gs_vertex2f(x1, y2);
-		gs_vertex2f(x1, y1);
-		gs_vertbuffer_t *vert_buf = gs_render_save();
-
-		gs_load_vertexbuffer(vert_buf);
-
-		gs_technique_begin_pass(tech, 0);
-		gs_draw(GS_LINESTRIP, 0, 5);
-		gs_technique_end_pass(tech);
-
-		gs_vertexbuffer_destroy(vert_buf);
-	}
-
-	gs_technique_end(tech);
-
-	gs_blend_state_pop();
 }
 
 static void yolo_filter_video_tick(void *data, float seconds)
@@ -482,7 +380,7 @@ static void yolo_filter_video_tick(void *data, float seconds)
 
 	filter->frame_counter = 0;
 
-	struct obs_source_frame *frame = obs_source_get_filter_active_target(filter->context);
+	const struct obs_source_frame *frame = obs_source_get_frame(filter->context);
 	if (!frame)
 		return;
 
@@ -560,15 +458,32 @@ static const char *yolo_filter_name(void *unused)
 }
 
 struct obs_source_info yolo_filter_info = {
-	.id = "yolo_recognizer_filter",
-	.type = OBS_SOURCE_TYPE_FILTER,
-	.output_flags = OBS_SOURCE_VIDEO,
-	.get_name = yolo_filter_name,
-	.create = yolo_filter_create,
-	.destroy = yolo_filter_destroy,
-	.update = yolo_filter_update,
-	.video_render = yolo_filter_video_render,
-	.video_tick = yolo_filter_video_tick,
-	.get_properties = yolo_filter_properties,
-	.get_defaults = yolo_filter_defaults,
+	"yolo_recognizer_filter",
+	OBS_SOURCE_TYPE_FILTER,
+	OBS_SOURCE_VIDEO,
+	0,
+	yolo_filter_create,
+	yolo_filter_destroy,
+	yolo_filter_update,
+	NULL,
+	NULL,
+	NULL,
+	yolo_filter_video_render,
+	yolo_filter_name,
+	NULL,
+	NULL,
+	yolo_filter_defaults,
+	NULL,
+	yolo_filter_properties,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	yolo_filter_video_tick,
+	NULL,
+	NULL,
+	NULL
 };

@@ -380,7 +380,7 @@ static void yolo_filter_video_tick(void *data, float seconds)
 
 	filter->frame_counter = 0;
 
-	const struct obs_source_frame *frame = obs_source_get_frame(filter->context);
+	struct obs_source_frame *frame = obs_source_get_frame(filter->context);
 	if (!frame)
 		return;
 
@@ -461,28 +461,29 @@ struct obs_source_info yolo_filter_info = {
 	"yolo_recognizer_filter",
 	OBS_SOURCE_TYPE_FILTER,
 	OBS_SOURCE_VIDEO,
-	0,
+	yolo_filter_name,
 	yolo_filter_create,
 	yolo_filter_destroy,
 	yolo_filter_update,
-	NULL,
-	NULL,
-	NULL,
-	yolo_filter_video_render,
-	yolo_filter_name,
-	NULL,
-	NULL,
 	yolo_filter_defaults,
-	NULL,
 	yolo_filter_properties,
 	NULL,
 	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
-	NULL,
 	yolo_filter_video_tick,
+	yolo_filter_video_render,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
 	NULL,
 	NULL,
 	NULL

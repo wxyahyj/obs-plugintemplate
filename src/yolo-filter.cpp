@@ -123,8 +123,8 @@ static void yolo_filter_video_render(void *data, gs_effect_t *effect)
 	// 参数说明：
 	//   - filter->context: 源上下文
 	//   - GS_RGBA: 颜色格式
-	//   - 0: 标志位（不使用特殊标志）
-	obs_source_process_filter_begin(filter->context, GS_RGBA, 0);
+	//   - OBS_NO_DIRECT_RENDERING: 不使用直接渲染（最安全）
+	obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_NO_DIRECT_RENDERING);
 	
 	// 3. 结束处理滤镜 - 这也是必须的！
 	// 这会把上游的视频帧绘制出来

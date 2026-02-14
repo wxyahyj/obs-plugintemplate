@@ -119,16 +119,33 @@ static void yolo_filter_video_render(void *data, gs_effect_t *effect)
 		return;
 	}
 	
-	// 2. 开始处理滤镜 - 这是必须的！
+	// 2. 获取父源（被滤镜应用的源）
+	obs_source_t *target = obs_filter_get_target(filter->context);
+	if (!target) {
+		blog(LOG_WARNING, "[YOLO] 无法获取父源");
+		return;
+	}
+	
+	// 3. 获取父源的实际宽度和高度
+	uint32_t width = obs_source_get_width(target);
+	uint32_t height = obs_source_get_height(target);
+	
+	// 4. 开始处理滤镜 - 这是必须的！
 	// 参数说明：
 	//   - filter->context: 源上下文
 	//   - GS_RGBA: 颜色格式
 	//   - OBS_NO_DIRECT_RENDERING: 不使用直接渲染（最安全）
-	obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_NO_DIRECT_RENDERING);
+	bool success = obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_NO_DIRECT_RENDERING);
 	
-	// 3. 结束处理滤镜 - 这也是必须的！
-	// 这会把上游的视频帧绘制出来
-	obs_source_process_filter_end(filter->context, effect, 0, 0);
+	if (!success) {
+		blog(LOG_WARNING, "[YOLO] obs_source_process_filter_begin 失败");
+		return;
+	}
+	
+	// 5. 结束处理滤镜 - 这也是必须的！
+	// 注意：必须传入正确的宽度和高度！
+	// 传入 0 会导致 effect_setval_inline 错误！
+	obs_source_process_filter_end(filter->context, effect, width, height);
 	
 	// 注意：
 	// begin 和 end 必须成对出现！

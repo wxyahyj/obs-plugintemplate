@@ -58,9 +58,28 @@ static void my_filter_video_render(void *data, gs_effect_t *effect)
 {
 	struct my_filter_data *filter = (struct my_filter_data *)data;
 	
-	blog(LOG_INFO, "[YOLO] video_render 被调用！直接透传！");
+	blog(LOG_INFO, "[YOLO] video_render 被调用！开始渲染！");
 	
-	obs_source_skip_video_filter(filter->source);
+	obs_source_t *target = obs_filter_get_target(filter->source);
+	uint32_t width = 0;
+	uint32_t height = 0;
+
+	if (target) {
+		width = obs_source_get_base_width(target);
+		height = obs_source_get_base_height(target);
+		blog(LOG_INFO, "[YOLO] 目标源：%p, 宽=%u, 高=%u", target, width, height);
+	}
+
+	if (width == 0 || height == 0) {
+		blog(LOG_INFO, "[YOLO] 宽或高为0，直接透传！");
+		obs_source_skip_video_filter(filter->source);
+		return;
+	}
+
+	if (obs_source_process_filter_begin(filter->source, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING)) {
+		blog(LOG_INFO, "[YOLO] 调用 obs_source_process_filter_end，宽=%u, 高=%u", width, height);
+		obs_source_process_filter_end(filter->source, effect, width, height);
+	}
 }
 
 struct obs_source_info yolo_filter_info = {

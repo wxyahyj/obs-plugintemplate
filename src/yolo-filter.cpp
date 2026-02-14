@@ -59,16 +59,14 @@ static void yolo_filter_update(void *data, obs_data_t *settings)
 
 /**
  * ============================================
- * 最简单的视频渲染 - 完全参考官方示例
+ * 最简单的视频渲染 - 完全参考官方最简单滤镜
  * ============================================
  */
 static void yolo_filter_video_render(void *data, gs_effect_t *effect)
 {
 	YoloFilterData *filter = static_cast<YoloFilterData *>(data);
 	
-	if (!obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_NO_DIRECT_RENDERING))
-		return;
-	
+	obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING);
 	obs_source_process_filter_end(filter->context, effect, 0, 0);
 }
 

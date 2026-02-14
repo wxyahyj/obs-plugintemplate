@@ -420,7 +420,13 @@ static void run_inference(YoloFilterData *filter, const uint8_t *data, int width
 
 static void yolo_filter_video_render(void *data, gs_effect_t *effect)
 {
+	if (!data)
+		return;
+
 	YoloFilterData *filter = static_cast<YoloFilterData *>(data);
+
+	if (!filter->context)
+		return;
 
 	obs_source_process_filter_begin(filter->context, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING);
 	obs_source_process_filter_end(filter->context, effect, 0, 0);

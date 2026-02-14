@@ -80,7 +80,7 @@ add_dependencies(${CMAKE_PROJECT_NAME} onnxruntime)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${ONNXRUNTIME_INCLUDE_DIR}")
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE "${ONNXRUNTIME_LIBS}")
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.c src/yolo-filter.c)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.c src/yolo-filter.cpp)
 
 if(WIN32)
   install(FILES "${ONNXRUNTIME_LIB_DIR}/onnxruntime.dll" DESTINATION "obs-plugins/${_name}")

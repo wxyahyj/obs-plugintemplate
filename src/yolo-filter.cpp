@@ -1,8 +1,19 @@
 #include <obs-module.h>
-#include <stdlib.h>
+#include <graphics/graphics.h>
+#include <graphics/texrender.h>
+#include <string>
 
 struct my_filter_data {
 	obs_source_t *source;
+	gs_texrender_t *texrender;
+
+	std::string modelPath;
+	bool enableInference;
+	float confidenceThreshold;
+	int inferenceInterval;
+	int modelInputSize;
+	bool renderBoxes;
+	bool followMode;
 };
 
 static const char *my_filter_name(void *unused)
@@ -15,10 +26,15 @@ static void *my_filter_create(obs_data_t *settings, obs_source_t *source)
 {
 	blog(LOG_INFO, "[YOLO] ********** my_filter_create 开始！**********");
 	
-	struct my_filter_data *filter = (struct my_filter_data *)bzalloc(sizeof(struct my_filter_data));
+	void *mem = bmalloc(sizeof(struct my_filter_data));
+	struct my_filter_data *filter = new (mem) my_filter_data();
 	filter->source = source;
 
-	blog(LOG_INFO, "[YOLO] 创建成功！source = %p", source);
+	obs_enter_graphics();
+	filter->texrender = gs_texrender_create(GS_BGRA, GS_ZS_NONE);
+	obs_leave_graphics();
+
+	blog(LOG_INFO, "[YOLO] 创建成功！source = %p, texrender = %p", source, filter->texrender);
 
 	obs_source_update(source, settings);
 	
@@ -30,8 +46,15 @@ static void my_filter_destroy(void *data)
 {
 	blog(LOG_INFO, "[YOLO] my_filter_destroy 被调用！");
 	struct my_filter_data *filter = (struct my_filter_data *)data;
-	if (filter)
+	if (filter) {
+		if (filter->texrender) {
+			obs_enter_graphics();
+			gs_texrender_destroy(filter->texrender);
+			obs_leave_graphics();
+		}
+		filter->~my_filter_data();
 		bfree(filter);
+	}
 }
 
 static void my_filter_defaults(obs_data_t *settings)
@@ -64,9 +87,29 @@ static obs_properties_t *my_filter_properties(void *data)
 
 static void my_filter_update(void *data, obs_data_t *settings)
 {
-	UNUSED_PARAMETER(data);
-	UNUSED_PARAMETER(settings);
+	struct my_filter_data *filter = (struct my_filter_data *)data;
+	
 	blog(LOG_INFO, "[YOLO] my_filter_update 被调用！");
+
+	const char *modelPath = obs_data_get_string(settings, "model_path");
+	filter->modelPath = modelPath ? modelPath : "";
+	filter->enableInference = obs_data_get_bool(settings, "enable_inference");
+	filter->confidenceThreshold = (float)obs_data_get_double(settings, "confidence_threshold");
+	filter->inferenceInterval = (int)obs_data_get_int(settings, "inference_interval");
+	filter->modelInputSize = (int)obs_data_get_int(settings, "model_input_size");
+	filter->renderBoxes = obs_data_get_bool(settings, "render_boxes");
+	filter->followMode = obs_data_get_bool(settings, "follow_mode");
+
+	blog(LOG_INFO, "[YOLO] 模型路径: %s", filter->modelPath.c_str());
+	blog(LOG_INFO, "[YOLO] 启用推理: %s", filter->enableInference ? "是" : "否");
+}
+
+static void my_filter_video_tick(void *data, float seconds)
+{
+	UNUSED_PARAMETER(seconds);
+	struct my_filter_data *filter = (struct my_filter_data *)data;
+	
+	blog(LOG_INFO, "[YOLO] video_tick 被调用！");
 }
 
 static void my_filter_video_render(void *data, gs_effect_t *effect)
@@ -76,7 +119,7 @@ static void my_filter_video_render(void *data, gs_effect_t *effect)
 	obs_source_skip_video_filter(filter->source);
 }
 
-struct obs_source_info yolo_filter_info = {
+extern "C" struct obs_source_info yolo_filter_info = {
 	.id             = "yolo_recognizer_filter",
 	.type           = OBS_SOURCE_TYPE_FILTER,
 	.output_flags   = OBS_SOURCE_VIDEO,
@@ -86,5 +129,6 @@ struct obs_source_info yolo_filter_info = {
 	.get_defaults   = my_filter_defaults,
 	.get_properties = my_filter_properties,
 	.update         = my_filter_update,
+	.video_tick     = my_filter_video_tick,
 	.video_render   = my_filter_video_render,
 };

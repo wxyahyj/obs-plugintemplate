@@ -39,7 +39,7 @@ static obs_properties_t *my_filter_properties(void *data)
 	UNUSED_PARAMETER(data);
 
 	obs_properties_t *props = obs_properties_create();
-	obs_properties_add_text(props, "info", "纯C最小工作版本", OBS_TEXT_INFO);
+	obs_properties_add_text(props, "info", "skip video filter 测试版", OBS_TEXT_INFO);
 	return props;
 }
 
@@ -52,10 +52,10 @@ static void my_filter_update(void *data, obs_data_t *settings)
 static void my_filter_video_render(void *data, gs_effect_t *effect)
 {
 	struct my_filter_data *filter = (struct my_filter_data *)data;
-
-	if (obs_source_process_filter_begin(filter->source, GS_RGBA, OBS_ALLOW_DIRECT_RENDERING)) {
-		obs_source_process_filter_end(filter->source, effect, 0, 0);
-	}
+	
+	blog(LOG_INFO, "[YOLO] video_render 被调用！");
+	
+	obs_source_skip_video_filter(filter->source);
 }
 
 struct obs_source_info yolo_filter_info = {
